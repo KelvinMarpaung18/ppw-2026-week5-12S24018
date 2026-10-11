@@ -49,7 +49,7 @@ Aplikasi Sistem Informasi Perpustakaan Kampus Del (SIPUS-Del) berbasis web mengg
    ```bash
    php artisan serve
    ```
-   Buka peramban di: **[http://localhost:8000](http://localhost:8000)**
+   Buka peramban di: **[http://127.0.0.1:8000](http://127.0.0.1:8000)** (atau `http://localhost:8000`)
 
 ---
 
