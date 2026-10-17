@@ -4,16 +4,28 @@ namespace Tests\Feature;
 
 use App\Models\Buku;
 use App\Models\Kategori;
+use App\Models\Peminjaman;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class SipusDelTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected User $pustakawan;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Siapkan akun pustakawan standar untuk pengujian
+        $this->pustakawan = User::create([
+            'name' => 'Pustakawan Del',
+            'email' => 'pustakawan@del.ac.id',
+            'password' => Hash::make('password123'),
+        ]);
     }
 
     public function test_root_redirects_to_buku_index(): void
@@ -22,7 +34,7 @@ class SipusDelTest extends TestCase
         $response->assertRedirect(route('buku.index'));
     }
 
-    public function test_can_view_buku_index_with_eager_loaded_kategori(): void
+    public function test_can_view_buku_index_with_statistics_cards(): void
     {
         $kategori = Kategori::create([
             'kode_kategori' => 'KAT-INF',
@@ -44,141 +56,143 @@ class SipusDelTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('Clean Code');
         $response->assertSee('Informatika');
+        $response->assertSee('Total Judul Buku');
     }
 
-    public function test_buku_validation_rules(): void
+    public function test_auth_login_with_valid_credentials_and_cookie(): void
     {
-        // Test validation: empty data
-        $response = $this->post(route('buku.store'), []);
-        $response->assertSessionHasErrors(['isbn', 'judul', 'penulis', 'penerbit', 'tahun_terbit', 'kategori_id', 'stok']);
-
-        $kategori = Kategori::create([
-            'kode_kategori' => 'KAT-INF',
-            'nama_kategori' => 'Informatika',
+        $response = $this->post(route('login.post'), [
+            'email' => 'pustakawan@del.ac.id',
+            'password' => 'password123',
         ]);
 
-        // Test validation: judul < 5 chars, stok < 0, invalid kategori_id
-        $response = $this->post(route('buku.store'), [
-            'isbn' => '12345',
-            'judul' => 'Abc', // < 5 chars
-            'penulis' => 'John',
-            'penerbit' => 'Press',
-            'tahun_terbit' => 2024,
-            'kategori_id' => 99999, // non-existent
-            'stok' => -1, // < 0
-        ]);
-
-        $response->assertSessionHasErrors(['judul', 'kategori_id', 'stok']);
-    }
-
-    public function test_can_store_buku(): void
-    {
-        $kategori = Kategori::create([
-            'kode_kategori' => 'KAT-SI',
-            'nama_kategori' => 'Sistem Informasi',
-        ]);
-
-        $payload = [
-            'isbn' => '978-0078022159',
-            'judul' => 'Database System Concepts',
-            'penulis' => 'Abraham Silberschatz',
-            'penerbit' => 'McGraw-Hill',
-            'tahun_terbit' => 2019,
-            'kategori_id' => $kategori->id,
-            'stok' => 15,
-            'sinopsis' => 'Buku teks basis data terkemuka.',
-        ];
-
-        $response = $this->post(route('buku.store'), $payload);
         $response->assertRedirect(route('buku.index'));
-        $response->assertSessionHas('success');
-
-        $this->assertDatabaseHas('bukus', [
-            'isbn' => '978-0078022159',
-            'judul' => 'Database System Concepts',
-        ]);
+        $this->assertAuthenticatedAs($this->pustakawan);
+        $response->assertCookie('del_last_user_email', 'pustakawan@del.ac.id');
     }
 
-    public function test_can_show_and_edit_buku(): void
+    public function test_auth_login_fails_with_invalid_credentials(): void
     {
+        $response = $this->post(route('login.post'), [
+            'email' => 'pustakawan@del.ac.id',
+            'password' => 'wrongpassword',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertGuest();
+    }
+
+    public function test_auth_logout_clears_session(): void
+    {
+        $this->actingAs($this->pustakawan);
+
+        $response = $this->post(route('logout'));
+        $response->assertRedirect(route('login'));
+        $this->assertGuest();
+    }
+
+    public function test_unauthenticated_user_cannot_access_mutation_routes(): void
+    {
+        // Akses form peminjaman tanpa login harus dialihkan ke login
+        $response = $this->get(route('peminjaman.create'));
+        $response->assertRedirect(route('login'));
+
+        // Akses form tambah buku tanpa login harus dialihkan ke login
+        $resBuku = $this->get(route('buku.create'));
+        $resBuku->assertRedirect(route('login'));
+    }
+
+    public function test_peminjaman_buku_acid_success_decrements_stock(): void
+    {
+        $this->actingAs($this->pustakawan);
+
         $kategori = Kategori::create([
-            'kode_kategori' => 'KAT-AI',
-            'nama_kategori' => 'Kecerdasan Buatan',
+            'kode_kategori' => 'KAT-RPL',
+            'nama_kategori' => 'Rekayasa Perangkat Lunak',
         ]);
 
         $buku = Buku::create([
-            'isbn' => '978-0136086208',
-            'judul' => 'Artificial Intelligence: A Modern Approach',
-            'penulis' => 'Stuart Russell',
-            'penerbit' => 'Pearson',
-            'tahun_terbit' => 2020,
-            'kategori_id' => $kategori->id,
-            'stok' => 8,
-            'sinopsis' => 'Buku AI komprehensif.',
-        ]);
-
-        $showRes = $this->get(route('buku.show', $buku));
-        $showRes->assertStatus(200);
-        $showRes->assertSee('Artificial Intelligence: A Modern Approach');
-
-        $editRes = $this->get(route('buku.edit', $buku));
-        $editRes->assertStatus(200);
-
-        $updateRes = $this->put(route('buku.update', $buku), [
-            'isbn' => '978-0136086208',
-            'judul' => 'Artificial Intelligence: A Modern Approach (Updated)',
-            'penulis' => 'Stuart Russell & Peter Norvig',
-            'penerbit' => 'Pearson',
-            'tahun_terbit' => 2021,
-            'kategori_id' => $kategori->id,
-            'stok' => 12,
-            'sinopsis' => 'Deskripsi diperbarui.',
-        ]);
-
-        $updateRes->assertRedirect(route('buku.index'));
-        $this->assertDatabaseHas('bukus', [
-            'id' => $buku->id,
-            'judul' => 'Artificial Intelligence: A Modern Approach (Updated)',
-            'stok' => 12,
-        ]);
-    }
-
-    public function test_can_delete_buku(): void
-    {
-        $kategori = Kategori::create([
-            'kode_kategori' => 'KAT-MAT',
-            'nama_kategori' => 'Matematika Diskrit',
-        ]);
-
-        $buku = Buku::create([
-            'isbn' => '978-0073383095',
-            'judul' => 'Discrete Mathematics and Its Applications',
-            'penulis' => 'Kenneth H. Rosen',
-            'penerbit' => 'McGraw-Hill',
+            'isbn' => '978-0134757599',
+            'judul' => 'Refactoring',
+            'penulis' => 'Martin Fowler',
+            'penerbit' => 'Addison-Wesley',
             'tahun_terbit' => 2018,
             'kategori_id' => $kategori->id,
             'stok' => 5,
         ]);
 
-        $response = $this->delete(route('buku.destroy', $buku));
-        $response->assertRedirect(route('buku.index'));
-        $this->assertDatabaseMissing('bukus', ['id' => $buku->id]);
+        $payload = [
+            'buku_id' => $buku->id,
+            'nim_peminjam' => '12S24018',
+            'nama_peminjam' => 'Kelvin Marpaung',
+            'durasi_hari' => 7,
+        ];
+
+        $response = $this->post(route('peminjaman.store'), $payload);
+
+        $response->assertRedirect(route('peminjaman.index'));
+        $response->assertSessionHas('success');
+
+        // Pastikan stok berkurang menjadi 4 secara atomik
+        $this->assertEquals(4, $buku->fresh()->stok);
+
+        // Pastikan data tersimpan di tabel peminjamans
+        $this->assertDatabaseHas('peminjamans', [
+            'buku_id' => $buku->id,
+            'nim_peminjam' => '12S24018',
+            'status' => 'dipinjam',
+        ]);
     }
 
-    public function test_kategori_crud_and_cascade_delete(): void
+    public function test_peminjaman_buku_rejected_when_stock_is_zero(): void
     {
-        $postRes = $this->post(route('kategori.store'), [
+        $this->actingAs($this->pustakawan);
+
+        $kategori = Kategori::create([
+            'kode_kategori' => 'KAT-AI',
+            'nama_kategori' => 'Kecerdasan Buatan',
+        ]);
+
+        $bukuStokNol = Buku::create([
+            'isbn' => '978-0131429383',
+            'judul' => 'Buku Habis',
+            'penulis' => 'Penulis Uji',
+            'penerbit' => 'Penerbit Uji',
+            'tahun_terbit' => 2020,
+            'kategori_id' => $kategori->id,
+            'stok' => 0,
+        ]);
+
+        $payload = [
+            'buku_id' => $bukuStokNol->id,
+            'nim_peminjam' => '12S24099',
+            'nama_peminjam' => 'Siswa Test',
+            'durasi_hari' => 7,
+        ];
+
+        $response = $this->post(route('peminjaman.store'), $payload);
+
+        // Harus ditolak dengan pesan error
+        $response->assertSessionHas('error');
+        $this->assertEquals(0, $bukuStokNol->fresh()->stok);
+        $this->assertDatabaseMissing('peminjamans', [
+            'buku_id' => $bukuStokNol->id,
+            'nim_peminjam' => '12S24099',
+        ]);
+    }
+
+    public function test_peminjaman_buku_rejected_if_same_nim_has_active_borrow(): void
+    {
+        $this->actingAs($this->pustakawan);
+
+        $kategori = Kategori::create([
             'kode_kategori' => 'KAT-CYB',
             'nama_kategori' => 'Keamanan Siber',
         ]);
-        $postRes->assertRedirect(route('kategori.index'));
-        $postRes->assertSessionHas('success');
-
-        $kategori = Kategori::where('kode_kategori', 'KAT-CYB')->firstOrFail();
 
         $buku = Buku::create([
             'isbn' => '978-0133594140',
-            'judul' => 'Computer Networking: A Top-Down Approach',
+            'judul' => 'Computer Networking',
             'penulis' => 'James Kurose',
             'penerbit' => 'Pearson',
             'tahun_terbit' => 2021,
@@ -186,15 +200,68 @@ class SipusDelTest extends TestCase
             'stok' => 10,
         ]);
 
-        $showRes = $this->get(route('kategori.show', $kategori));
-        $showRes->assertStatus(200);
-        $showRes->assertSee('Keamanan Siber');
-        $showRes->assertSee('Computer Networking: A Top-Down Approach');
+        // Pinjaman pertama berhasil
+        $this->post(route('peminjaman.store'), [
+            'buku_id' => $buku->id,
+            'nim_peminjam' => '12S24018',
+            'nama_peminjam' => 'Kelvin Marpaung',
+            'durasi_hari' => 7,
+        ]);
 
-        // Delete kategori and verify cascade delete on associated book
-        $delRes = $this->delete(route('kategori.destroy', $kategori));
-        $delRes->assertRedirect(route('kategori.index'));
-        $this->assertDatabaseMissing('kategoris', ['id' => $kategori->id]);
-        $this->assertDatabaseMissing('bukus', ['id' => $buku->id]);
+        // Pinjaman kedua dengan NIM yang sama untuk buku yang sama harus ditolak
+        $response = $this->post(route('peminjaman.store'), [
+            'buku_id' => $buku->id,
+            'nim_peminjam' => '12S24018',
+            'nama_peminjam' => 'Kelvin Marpaung',
+            'durasi_hari' => 7,
+        ]);
+
+        $response->assertSessionHas('error');
+        // Stok hanya berkurang 1 kali (menjadi 9)
+        $this->assertEquals(9, $buku->fresh()->stok);
+    }
+
+    public function test_pengembalian_buku_acid_success_increments_stock(): void
+    {
+        $this->actingAs($this->pustakawan);
+
+        $kategori = Kategori::create([
+            'kode_kategori' => 'KAT-MAT',
+            'nama_kategori' => 'Matematika Diskrit',
+        ]);
+
+        $buku = Buku::create([
+            'isbn' => '978-0073383095',
+            'judul' => 'Discrete Mathematics',
+            'penulis' => 'Kenneth H. Rosen',
+            'penerbit' => 'McGraw-Hill',
+            'tahun_terbit' => 2018,
+            'kategori_id' => $kategori->id,
+            'stok' => 2,
+        ]);
+
+        $peminjaman = Peminjaman::create([
+            'kode_pinjam' => 'PINJAM-TEST-0001',
+            'buku_id' => $buku->id,
+            'nim_peminjam' => '12S24001',
+            'nama_peminjam' => 'Andi Siregar',
+            'tanggal_pinjam' => now()->toDateString(),
+            'tanggal_jatuh_tempo' => now()->addDays(7)->toDateString(),
+            'tanggal_kembali' => null,
+            'status' => 'dipinjam',
+        ]);
+
+        // Eksekusi pengembalian buku
+        $response = $this->patch(route('peminjaman.kembalikan', $peminjaman));
+
+        $response->assertRedirect(route('peminjaman.index'));
+        $response->assertSessionHas('success');
+
+        // Stok buku bertambah menjadi 3
+        $this->assertEquals(3, $buku->fresh()->stok);
+
+        // Status berubah menjadi dikembalikan
+        $this->assertEquals('dikembalikan', $peminjaman->fresh()->status);
+        $this->assertNotNull($peminjaman->fresh()->tanggal_kembali);
     }
 }

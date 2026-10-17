@@ -150,6 +150,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {{ request()->routeIs('peminjaman.*') ? 'active' : '' }}" href="{{ route('peminjaman.index') }}">
+                            <i class="bi bi-arrow-left-right me-1"></i> Sirkulasi Peminjaman
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {{ request()->routeIs('kategori.*') ? 'active' : '' }}" href="{{ route('kategori.index') }}">
                             <i class="bi bi-tags me-1"></i> Kategori Buku
                         </a>
@@ -157,12 +162,45 @@
                 </ul>
 
                 <div class="d-flex align-items-center gap-2">
-                    <a href="{{ route('buku.create') }}" class="btn btn-sm btn-light text-primary fw-semibold px-3 py-2 shadow-sm" style="color: var(--del-purple) !important;">
-                        <i class="bi bi-plus-circle-fill me-1"></i> Tambah Buku
-                    </a>
-                    <a href="{{ route('kategori.create') }}" class="btn btn-sm btn-outline-light px-3 py-2">
-                        <i class="bi bi-folder-plus me-1"></i> Tambah Kategori
-                    </a>
+                    @auth
+                        <a href="{{ route('peminjaman.create') }}" class="btn btn-sm btn-warning text-dark fw-semibold px-3 py-2 shadow-sm">
+                            <i class="bi bi-arrow-left-right me-1"></i> Catat Pinjam
+                        </a>
+                        <a href="{{ route('buku.create') }}" class="btn btn-sm btn-light fw-semibold px-3 py-2 shadow-sm" style="color: var(--del-purple) !important;">
+                            <i class="bi bi-plus-circle-fill me-1"></i> Tambah Buku
+                        </a>
+
+                        <div class="dropdown ms-2">
+                            <button class="btn btn-sm btn-outline-light dropdown-toggle px-3 py-2 d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="bi bi-person-circle fs-6"></i>
+                                <span>{{ Auth::user()->name }}</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow">
+                                <li class="dropdown-header">
+                                    <div class="fw-bold">{{ Auth::user()->name }}</div>
+                                    <div class="small text-muted">{{ Auth::user()->email }}</div>
+                                    @if(session('login_timestamp'))
+                                        <div class="small text-muted mt-1">
+                                            <i class="bi bi-clock me-1"></i>Login: {{ session('login_timestamp') }}
+                                        </div>
+                                    @endif
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form action="{{ route('logout') }}" method="POST">
+                                        @csrf
+                                        <button type="submit" class="dropdown-item text-danger d-flex align-items-center gap-2">
+                                            <i class="bi bi-box-arrow-right"></i> Keluar (Logout)
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
+                    @else
+                        <a href="{{ route('login') }}" class="btn btn-sm btn-light fw-semibold px-3 py-2 shadow-sm" style="color: var(--del-purple) !important;">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Login Pustakawan
+                        </a>
+                    @endauth
                 </div>
             </div>
         </div>
