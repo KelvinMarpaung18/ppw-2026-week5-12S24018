@@ -4,9 +4,11 @@ namespace Database\Seeders;
 
 use App\Models\Buku;
 use App\Models\Kategori;
+use App\Models\Peminjaman;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -17,6 +19,13 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // 1. Akun Pustakawan Uji (Sesuai Spesifikasi Wajib Modul Minggu 6)
+        User::create([
+            'name' => 'Pustakawan Del',
+            'email' => 'pustakawan@del.ac.id',
+            'password' => Hash::make('password123'),
+        ]);
+
         $kategoris = [
             [
                 'kode_kategori' => 'KAT-INF',
@@ -170,10 +179,33 @@ class DatabaseSeeder extends Seeder
                 'stok' => 22,
                 'sinopsis' => 'Fondasi logika proposisional, teori himpunan, kombinatorika, relasi graf, dan induksi matematika untuk ilmu komputer.',
             ],
+            // 2. Sampel Buku dengan STOK = 0 (Wajib Modul Minggu 6: Uji Tolak & Rollback Stok Habis)
+            [
+                'isbn' => '978-0131429383',
+                'judul' => 'Modern Operating Systems (Stok Habis - Uji ACID Rollback)',
+                'penulis' => 'Andrew S. Tanenbaum, Herbert Bos',
+                'penerbit' => 'Pearson Education',
+                'tahun_terbit' => 2015,
+                'kategori_id' => $kategoriModels[0]->id, // INF
+                'stok' => 0,
+                'sinopsis' => 'Buku sampel khusus pengujian penolakan transaksi peminjaman secara atomik ketika stok bernilai 0.',
+            ],
+            // 3. Sampel Buku dengan STOK = 1 (Wajib Modul Minggu 6: Uji Concurrency Locking lockForUpdate)
+            [
+                'isbn' => '978-0134444321',
+                'judul' => 'Cryptography and Network Security (Stok 1 - Uji LockForUpdate)',
+                'penulis' => 'William Stallings',
+                'penerbit' => 'Pearson',
+                'tahun_terbit' => 2017,
+                'kategori_id' => $kategoriModels[4]->id, // CYB
+                'stok' => 1,
+                'sinopsis' => 'Buku sampel khusus pengujian atomisitas transaksi peminjaman pada sisa stok tepat 1 eksamplar.',
+            ],
         ];
 
+        $createdBukus = [];
         foreach ($sampleBukus as $bukuData) {
-            Buku::create($bukuData);
+            $createdBukus[] = Buku::create($bukuData);
         }
 
         // Generate additional 15 realistic books using Factory to guarantee > 25 books across categories
@@ -182,5 +214,52 @@ class DatabaseSeeder extends Seeder
                 'kategori_id' => $kategori->id,
             ]);
         }
+
+        // 4. Sampel Transaksi Peminjaman (Wajib Modul Minggu 6)
+        // a. Peminjaman Aktif (status: 'dipinjam')
+        Peminjaman::create([
+            'kode_pinjam' => 'PINJAM-20261010-0001',
+            'buku_id' => $createdBukus[0]->id, // Clean Code
+            'nim_peminjam' => '12S24001',
+            'nama_peminjam' => 'Budi Santoso',
+            'tanggal_pinjam' => now()->subDays(3)->toDateString(),
+            'tanggal_jatuh_tempo' => now()->addDays(4)->toDateString(),
+            'tanggal_kembali' => null,
+            'status' => 'dipinjam',
+        ]);
+
+        Peminjaman::create([
+            'kode_pinjam' => 'PINJAM-20261012-0002',
+            'buku_id' => $createdBukus[3]->id, // AI A Modern Approach
+            'nim_peminjam' => '12S24005',
+            'nama_peminjam' => 'Ruth Simanjuntak',
+            'tanggal_pinjam' => now()->subDays(2)->toDateString(),
+            'tanggal_jatuh_tempo' => now()->addDays(5)->toDateString(),
+            'tanggal_kembali' => null,
+            'status' => 'dipinjam',
+        ]);
+
+        // b. Peminjaman Selesai (status: 'dikembalikan')
+        Peminjaman::create([
+            'kode_pinjam' => 'PINJAM-20261001-0003',
+            'buku_id' => $createdBukus[5]->id, // Database System Concepts
+            'nim_peminjam' => '12S24010',
+            'nama_peminjam' => 'Yohana Panjaitan',
+            'tanggal_pinjam' => now()->subDays(12)->toDateString(),
+            'tanggal_jatuh_tempo' => now()->subDays(5)->toDateString(),
+            'tanggal_kembali' => now()->subDays(6)->toDateString(),
+            'status' => 'dikembalikan',
+        ]);
+
+        Peminjaman::create([
+            'kode_pinjam' => 'PINJAM-20261002-0004',
+            'buku_id' => $createdBukus[1]->id, // Design Patterns
+            'nim_peminjam' => '12S24018',
+            'nama_peminjam' => 'Kelvin Marpaung',
+            'tanggal_pinjam' => now()->subDays(10)->toDateString(),
+            'tanggal_jatuh_tempo' => now()->subDays(3)->toDateString(),
+            'tanggal_kembali' => now()->subDays(3)->toDateString(),
+            'status' => 'dikembalikan',
+        ]);
     }
 }
