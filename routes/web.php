@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BukuController;
 use App\Http\Controllers\KategoriController;
 use App\Http\Controllers\PeminjamanController;
+use App\Http\Controllers\Soap\LibrarySoapController;
 use Illuminate\Support\Facades\Route;
 
 // Rute Publik (Dapat Diakses Tamu & Mahasiswa)
@@ -43,4 +44,10 @@ Route::middleware('auth')->group(function () {
 
 // Detail Buku Publik (Diletakkan setelah /buku/create agar tidak bentrok)
 Route::get('/buku/{buku}', [BukuController::class, 'show'])->name('buku.show');
+
+// =========================================================================
+// Simulasi Layanan SOAP Bebas Pustaka Yudisium (Sistem Legacy Kampus)
+// =========================================================================
+Route::get('/soap/sipus.wsdl', [LibrarySoapController::class, 'wsdl']);
+Route::post('/soap/sipus', [LibrarySoapController::class, 'handle']);
 
